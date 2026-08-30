@@ -32,9 +32,9 @@ class _OnboardingViewState extends State<OnboardingView> {
       color: AppColors.secondary,
     ),
     _OnboardingItem(
-      title: 'Smarter Care with AI',
+      title: 'Smarter Health with AI',
       description:
-          'Machine learning models analyze historical adherence patterns to help caregivers prevent missed doses early.',
+          'Machine learning models analyze historical adherence patterns to help you track habits and prevent missed doses early.',
       icon: Icons.psychology_rounded,
       color: AppColors.primaryLight,
     ),

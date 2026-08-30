@@ -1,66 +1,39 @@
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
+import '../services/local_database_service.dart';
 
-/// Repository managing real Firebase Authentication, Cloud Firestore profile synchronization,
-/// session states, and role-based access control.
+/// Repository managing local database authentication, persistent sessions,
+/// and patient user profiles.
 class AuthRepository extends ChangeNotifier {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final LocalDatabaseService _localDb = LocalDatabaseService.instance;
 
   UserModel? _currentUser;
   bool _isLoading = false;
   String? _errorMessage;
-  StreamSubscription<User?>? _authStateSubscription;
 
   UserModel? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  bool get isAuthenticated => _currentUser != null && _auth.currentUser != null;
+  bool get isAuthenticated => _currentUser != null;
 
   AuthRepository() {
-    _initAuthStateListener();
+    _initLocalSession();
   }
 
-  void _initAuthStateListener() {
-    _authStateSubscription = _auth.authStateChanges().listen((User? firebaseUser) async {
-      if (firebaseUser == null) {
-        _currentUser = null;
-        notifyListeners();
-      } else {
-        await _fetchUserProfile(firebaseUser.uid);
-      }
-    });
-  }
-
-  Future<void> _fetchUserProfile(String uid) async {
+  Future<void> _initLocalSession() async {
     try {
-      final doc = await _firestore.collection('users').doc(uid).get();
-      if (doc.exists && doc.data() != null) {
-        _currentUser = UserModel.fromMap(doc.data()!, documentId: doc.id);
-      } else {
-        final fbUser = _auth.currentUser;
-        if (fbUser != null) {
-          _currentUser = UserModel(
-            userId: fbUser.uid,
-            name: fbUser.displayName ?? (fbUser.email?.split('@').first ?? 'User'),
-            email: fbUser.email ?? '',
-            phone: fbUser.phoneNumber ?? '',
-            role: 'patient',
-            createdAt: DateTime.now(),
-          );
-        }
+      final activeUser = await _localDb.getActiveUser();
+      if (activeUser != null) {
+        _currentUser = activeUser;
+        notifyListeners();
       }
-      notifyListeners();
     } catch (e) {
-      debugPrint('[AuthRepo] Error fetching user profile: $e');
+      debugPrint('[AuthRepo] Error loading local session: $e');
     }
   }
 
-  /// Real Firebase Sign In with email and password
-  /// Verifies credentials directly against Google Firebase Authentication.
+  /// Sign in with email and password against local database
   Future<bool> signIn({
     required String email,
     required String password,
@@ -68,201 +41,113 @@ class AuthRepository extends ChangeNotifier {
     _setLoading(true);
     _errorMessage = null;
 
-    try {
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
+    final trimmedEmail = email.trim();
+    if (trimmedEmail.isEmpty || password.isEmpty) {
+      _errorMessage = 'Please enter both email and password.';
+      _setLoading(false);
+      return false;
+    }
 
-      final user = credential.user;
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      final user = await _localDb.authenticateUser(trimmedEmail, password);
+
       if (user == null) {
-        _errorMessage = 'Authentication failed. Please try again.';
+        final exists = await _localDb.userExists(trimmedEmail);
+        if (!exists) {
+          _errorMessage = 'No account found with this email. Please register first.';
+        } else {
+          _errorMessage = 'Incorrect password.';
+        }
+        _currentUser = null;
         _setLoading(false);
         return false;
       }
 
-      // Fetch user profile from Cloud Firestore at users/{uid} with fallback
-      try {
-        final doc = await _firestore.collection('users').doc(user.uid).get();
-        if (doc.exists && doc.data() != null) {
-          _currentUser = UserModel.fromMap(doc.data()!, documentId: doc.id);
-        } else {
-          _currentUser = UserModel(
-            userId: user.uid,
-            name: user.displayName ?? (email.split('@').first),
-            email: email.trim(),
-            phone: '',
-            role: 'patient',
-            createdAt: DateTime.now(),
-          );
-        }
-      } catch (firestoreErr) {
-        debugPrint('[AuthRepo] Firestore blocked or offline, using fallback: $firestoreErr');
-        _currentUser = UserModel(
-          userId: user.uid,
-          name: user.displayName ?? (email.split('@').first),
-          email: email.trim(),
-          phone: '',
-          role: 'patient',
-          createdAt: DateTime.now(),
-        );
-      }
-
+      _currentUser = user;
       _setLoading(false);
       return true;
-    } on FirebaseAuthException catch (e) {
-      _errorMessage = _mapAuthError(e);
-      _currentUser = null;
-      _setLoading(false);
-      return false;
     } catch (e) {
-      _errorMessage = 'An unexpected error occurred: ${e.toString()}';
+      final errStr = e.toString();
+      if (errStr.contains('Incorrect password')) {
+        _errorMessage = 'Incorrect password.';
+      } else {
+        _errorMessage = 'Login failed. Please check your credentials.';
+      }
       _currentUser = null;
       _setLoading(false);
       return false;
     }
   }
 
-  /// Real Firebase Registration and Cloud Firestore profile creation
+  /// Register a new Patient in the local database
   Future<bool> register({
     required String name,
     required String email,
     required String password,
     required String phone,
-    required String role,
+    String role = 'patient',
     DateTime? dateOfBirth,
   }) async {
     _setLoading(true);
     _errorMessage = null;
 
     try {
-      final credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-
-      final user = credential.user;
-      if (user == null) {
-        _errorMessage = 'Registration failed. User could not be created.';
-        _setLoading(false);
-        return false;
-      }
-
-      // Update Firebase Auth display name
-      try {
-        await user.updateDisplayName(name);
-      } catch (_) {}
-
-      final now = DateTime.now();
-      final userProfile = {
-        'uid': user.uid,
-        'userId': user.uid,
-        'name': name.trim(),
-        'email': email.trim(),
-        'phone': phone.trim(),
-        'role': role.toLowerCase(),
-        'createdAt': FieldValue.serverTimestamp(),
-        if (dateOfBirth != null) 'dateOfBirth': dateOfBirth.toIso8601String(),
-      };
-
-      // Save user document in Cloud Firestore under users/{uid}
-      try {
-        await _firestore.collection('users').doc(user.uid).set(userProfile);
-      } catch (firestoreError) {
-        debugPrint('[AuthRepo] Firestore profile save warning: $firestoreError');
-      }
-
-      _currentUser = UserModel(
-        userId: user.uid,
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      final user = await _localDb.registerUser(
         name: name.trim(),
         email: email.trim(),
+        password: password,
         phone: phone.trim(),
-        role: role.toLowerCase(),
-        createdAt: now,
         dateOfBirth: dateOfBirth,
       );
 
+      _currentUser = user;
       _setLoading(false);
       return true;
-    } on FirebaseAuthException catch (e) {
-      _errorMessage = _mapAuthError(e);
-      _currentUser = null;
-      _setLoading(false);
-      return false;
     } catch (e) {
-      _errorMessage = 'Registration error: ${e.toString()}';
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
       _currentUser = null;
       _setLoading(false);
       return false;
     }
   }
 
-  /// Send real password reset email via Firebase Auth
+  /// Reset password locally
   Future<bool> resetPassword({required String email}) async {
     _setLoading(true);
     _errorMessage = null;
     try {
-      await _auth.sendPasswordResetEmail(email: email.trim());
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      final exists = await _localDb.userExists(email.trim());
+      if (!exists) {
+        _errorMessage = 'No account found with this email.';
+        _setLoading(false);
+        return false;
+      }
       _setLoading(false);
       return true;
-    } on FirebaseAuthException catch (e) {
-      _errorMessage = _mapAuthError(e);
-      _setLoading(false);
-      return false;
     } catch (e) {
-      _errorMessage = 'Could not send reset email.';
+      _errorMessage = 'Could not reset password.';
       _setLoading(false);
       return false;
     }
   }
 
-  /// Real Sign Out
+  /// Sign out and clear local session
   Future<void> signOut() async {
     try {
-      await _auth.signOut();
+      await _localDb.clearActiveUser();
     } catch (e) {
-      debugPrint('[AuthRepo] Error during signOut: $e');
+      debugPrint('[AuthRepo] Error clearing session: $e');
     } finally {
       _currentUser = null;
       notifyListeners();
     }
   }
 
-  String _mapAuthError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'user-not-found':
-        return 'No account found. Please register first.';
-      case 'wrong-password':
-        return 'Incorrect password.';
-      case 'invalid-credential':
-        return 'Incorrect email or password.';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'email-already-in-use':
-        return 'This email is already registered. Please sign in.';
-      case 'weak-password':
-        return 'The password is too weak. Please use at least 6 characters.';
-      case 'user-disabled':
-        return 'This account has been disabled.';
-      case 'too-many-requests':
-        return 'Too many login attempts. Please try again later.';
-      case 'network-request-failed':
-        return 'Network error. Please check your internet connection.';
-      case 'operation-not-allowed':
-        return 'Email/Password sign-in is not enabled in your Firebase Console. Please enable it under Authentication > Sign-in method.';
-      default:
-        return e.message ?? 'Authentication failed. Please try again.';
-    }
-  }
-
   void _setLoading(bool loading) {
     _isLoading = loading;
     notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    _authStateSubscription?.cancel();
-    super.dispose();
   }
 }

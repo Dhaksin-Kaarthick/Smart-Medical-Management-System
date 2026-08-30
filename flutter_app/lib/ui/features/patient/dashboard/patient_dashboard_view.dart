@@ -328,7 +328,7 @@ class PatientDashboardView extends StatelessWidget {
             // TODAY'S SCHEDULE SECTION
             SectionHeader(
               title: "Today's Schedule",
-              actionLabel: '$completedCount / ${todayLogs.length} Done',
+              actionLabel: todayLogs.isEmpty ? '0 Done' : '$completedCount / ${todayLogs.length} Done',
               onAction: null,
             ),
             const SizedBox(height: 8),
@@ -336,8 +336,8 @@ class PatientDashboardView extends StatelessWidget {
             if (todayLogs.isEmpty)
               const EmptyState(
                 icon: Icons.medication_outlined,
-                title: 'No Medicines Today',
-                description: 'You have no scheduled doses for today.',
+                title: 'No Medicines Scheduled',
+                description: 'You have no scheduled doses. Go to the Medicines tab to add your prescriptions.',
               )
             else
               ...todayLogs.map(

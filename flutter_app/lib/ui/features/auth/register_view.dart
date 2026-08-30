@@ -1,24 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/validation_helper.dart';
 import '../../../data/repositories/auth_repository.dart';
+import '../../../data/repositories/medicine_repository.dart';
+import '../../../data/repositories/notification_repository.dart';
 import '../../common/custom_button.dart';
 import '../../common/custom_text_field.dart';
 import '../patient/patient_main_navigation.dart';
-import '../caregiver/caregiver_main_navigation.dart';
 
-/// User registration screen with Patient / Caregiver role selection and validation.
+/// Patient registration screen with input validation and local database storage.
 class RegisterView extends StatefulWidget {
-  final String initialRole;
-
-  const RegisterView({
-    super.key,
-    this.initialRole = AppConstants.rolePatient,
-  });
+  const RegisterView({super.key});
 
   @override
   State<RegisterView> createState() => _RegisterViewState();
@@ -33,14 +28,7 @@ class _RegisterViewState extends State<RegisterView> {
   final _confirmPasswordController = TextEditingController();
   final _dobController = TextEditingController();
 
-  late String _selectedRole;
   DateTime? _selectedDob;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedRole = widget.initialRole;
-  }
 
   @override
   void dispose() {
@@ -56,7 +44,7 @@ class _RegisterViewState extends State<RegisterView> {
   Future<void> _pickDob() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(1960),
+      initialDate: DateTime(1990),
       firstDate: DateTime(1920),
       lastDate: DateTime.now(),
     );
@@ -77,24 +65,23 @@ class _RegisterViewState extends State<RegisterView> {
       email: _emailController.text.trim(),
       password: _passwordController.text,
       phone: _phoneController.text.trim(),
-      role: _selectedRole,
+      role: 'patient',
       dateOfBirth: _selectedDob,
     );
 
     if (success && mounted) {
-      if (_selectedRole == AppConstants.roleCaregiver) {
-        await Navigator.pushAndRemoveUntil<void>(
-          context,
-          MaterialPageRoute<void>(builder: (_) => const CaregiverMainNavigation()),
-          (route) => false,
-        );
-      } else {
-        await Navigator.pushAndRemoveUntil<void>(
-          context,
-          MaterialPageRoute<void>(builder: (_) => const PatientMainNavigation()),
-          (route) => false,
-        );
+      final user = authRepo.currentUser;
+      if (user != null) {
+        // Load clean initial patient record (0 default tablets)
+        await context.read<MedicineRepository>().loadForPatient(user.userId);
+        await context.read<NotificationRepository>().loadForUser(user.userId);
       }
+
+      await Navigator.pushAndRemoveUntil<void>(
+        context,
+        MaterialPageRoute<void>(builder: (_) => const PatientMainNavigation()),
+        (route) => false,
+      );
     } else if (mounted && authRepo.errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -122,12 +109,11 @@ class _RegisterViewState extends State<RegisterView> {
   @override
   Widget build(BuildContext context) {
     final authRepo = context.watch<AuthRepository>();
-    final isPatient = _selectedRole == AppConstants.rolePatient;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
-        title: const Text('Create Account'),
+        title: const Text('Patient Registration'),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -138,43 +124,13 @@ class _RegisterViewState extends State<RegisterView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Join Smart Medical Management',
+                  'Create Patient Account',
                   style: AppTextStyles.headlineMedium.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Select your role to configure your personalized dashboard.',
+                  'Set up your personalized patient profile to manage your medicines.',
                   style: AppTextStyles.bodyMedium,
-                ),
-                const SizedBox(height: 20),
-
-                // Role Toggle
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceElevated,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildRoleTab(
-                          title: 'Patient',
-                          icon: Icons.person_rounded,
-                          isSelected: isPatient,
-                          onTap: () => setState(() => _selectedRole = AppConstants.rolePatient),
-                        ),
-                      ),
-                      Expanded(
-                        child: _buildRoleTab(
-                          title: 'Caregiver',
-                          icon: Icons.health_and_safety_rounded,
-                          isSelected: !isPatient,
-                          onTap: () => setState(() => _selectedRole = AppConstants.roleCaregiver),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
                 const SizedBox(height: 24),
 
@@ -182,7 +138,7 @@ class _RegisterViewState extends State<RegisterView> {
                 CustomTextField(
                   controller: _nameController,
                   label: 'Full Name',
-                  hint: isPatient ? 'e.g. Arun Kumar' : 'e.g. Dr. Priya Sharma',
+                  hint: 'e.g. Arun Kumar',
                   prefixIcon: Icons.badge_outlined,
                   validator: ValidationHelper.validateName,
                 ),
@@ -191,7 +147,7 @@ class _RegisterViewState extends State<RegisterView> {
                 CustomTextField(
                   controller: _emailController,
                   label: 'Email Address',
-                  hint: 'name@example.com',
+                  hint: 'patient@example.com',
                   prefixIcon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
                   validator: ValidationHelper.validateEmail,
@@ -207,17 +163,16 @@ class _RegisterViewState extends State<RegisterView> {
                   validator: ValidationHelper.validatePhone,
                 ),
 
-                // Date of Birth (Patient Only)
-                if (isPatient)
-                  CustomTextField(
-                    controller: _dobController,
-                    label: 'Date of Birth',
-                    hint: 'Select Date of Birth',
-                    prefixIcon: Icons.calendar_today_rounded,
-                    readOnly: true,
-                    onTap: _pickDob,
-                    validator: (v) => ValidationHelper.validateRequired(v, 'Date of birth'),
-                  ),
+                // Date of Birth
+                CustomTextField(
+                  controller: _dobController,
+                  label: 'Date of Birth',
+                  hint: 'Select Date of Birth',
+                  prefixIcon: Icons.calendar_today_rounded,
+                  readOnly: true,
+                  onTap: _pickDob,
+                  validator: (v) => ValidationHelper.validateRequired(v, 'Date of birth'),
+                ),
 
                 // Password
                 CustomTextField(
@@ -242,7 +197,7 @@ class _RegisterViewState extends State<RegisterView> {
 
                 const SizedBox(height: 12),
                 CustomButton(
-                  text: 'Register Account',
+                  text: 'Create Patient Account',
                   isLoading: authRepo.isLoading,
                   onPressed: _handleRegister,
                 ),
@@ -250,53 +205,6 @@ class _RegisterViewState extends State<RegisterView> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRoleTab({
-    required String title,
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: isSelected ? AppColors.primary : AppColors.textMuted,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              title,
-              style: AppTextStyles.titleMedium.copyWith(
-                fontSize: 14,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? AppColors.primary : AppColors.textSecondary,
-              ),
-            ),
-          ],
         ),
       ),
     );

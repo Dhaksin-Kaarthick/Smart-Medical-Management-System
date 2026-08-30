@@ -4,11 +4,12 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/repositories/auth_repository.dart';
+import '../../../data/repositories/medicine_repository.dart';
+import '../../../data/repositories/notification_repository.dart';
 import '../auth/login_view.dart';
 import '../patient/patient_main_navigation.dart';
-import '../caregiver/caregiver_main_navigation.dart';
 
-/// Professional splash screen validating live Firebase session before routing.
+/// Professional splash screen validating local session before routing to patient home.
 class SplashView extends StatefulWidget {
   const SplashView({super.key});
 
@@ -42,33 +43,25 @@ class _SplashViewState extends State<SplashView> with SingleTickerProviderStateM
   }
 
   Future<void> _navigateToNext() async {
-    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    await Future<void>.delayed(const Duration(milliseconds: 1000));
     if (!mounted) return;
 
     final authRepo = context.read<AuthRepository>();
 
-    // If Firebase user exists but profile is still loading, wait briefly
-    if (!authRepo.isAuthenticated) {
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-    }
-
-    if (!mounted) return;
-
     if (authRepo.isAuthenticated) {
       final user = authRepo.currentUser;
-      if (user?.isCaregiver ?? false) {
-        await Navigator.pushReplacement<void, void>(
-          context,
-          MaterialPageRoute<void>(builder: (_) => const CaregiverMainNavigation()),
-        );
-      } else {
-        await Navigator.pushReplacement<void, void>(
-          context,
-          MaterialPageRoute<void>(builder: (_) => const PatientMainNavigation()),
-        );
+      if (user != null) {
+        await context.read<MedicineRepository>().loadForPatient(user.userId);
+        await context.read<NotificationRepository>().loadForUser(user.userId);
       }
+
+      if (!mounted) return;
+      await Navigator.pushReplacement<void, void>(
+        context,
+        MaterialPageRoute<void>(builder: (_) => const PatientMainNavigation()),
+      );
     } else {
-      // Unauthenticated -> Strictly navigate to Login screen
+      // Unauthenticated -> Navigate to Patient Login screen
       await Navigator.pushReplacement<void, void>(
         context,
         MaterialPageRoute<void>(builder: (_) => const LoginView()),

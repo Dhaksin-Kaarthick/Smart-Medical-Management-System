@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/validation_helper.dart';
 import '../../../data/repositories/auth_repository.dart';
+import '../../../data/repositories/medicine_repository.dart';
+import '../../../data/repositories/notification_repository.dart';
 import '../../common/custom_button.dart';
 import '../../common/custom_text_field.dart';
 import '../patient/patient_main_navigation.dart';
-import '../caregiver/caregiver_main_navigation.dart';
 import 'register_view.dart';
 import 'forgot_password_dialog.dart';
 
-/// Clean, secure Login Screen strictly using real Firebase Authentication.
+/// Clean, secure Patient Login Screen with local database authentication.
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
 
@@ -44,8 +44,16 @@ class _LoginViewState extends State<LoginView> {
     if (success && mounted) {
       final user = authRepo.currentUser;
       if (user != null) {
-        _navigateHome(user.role);
+        // Load medicines and notifications for this logged-in patient
+        context.read<MedicineRepository>().loadForPatient(user.userId);
+        context.read<NotificationRepository>().loadForUser(user.userId);
       }
+
+      await Navigator.pushAndRemoveUntil<void>(
+        context,
+        MaterialPageRoute<void>(builder: (_) => const PatientMainNavigation()),
+        (route) => false,
+      );
     } else if (mounted && authRepo.errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -66,22 +74,6 @@ class _LoginViewState extends State<LoginView> {
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
-      );
-    }
-  }
-
-  void _navigateHome(String role) {
-    if (role == AppConstants.roleCaregiver) {
-      Navigator.pushAndRemoveUntil<void>(
-        context,
-        MaterialPageRoute<void>(builder: (_) => const CaregiverMainNavigation()),
-        (route) => false,
-      );
-    } else {
-      Navigator.pushAndRemoveUntil<void>(
-        context,
-        MaterialPageRoute<void>(builder: (_) => const PatientMainNavigation()),
-        (route) => false,
       );
     }
   }
@@ -125,7 +117,7 @@ class _LoginViewState extends State<LoginView> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Sign in to your verified medical management account.',
+                    'Sign in to your patient account and manage your medicine schedule.',
                     style: AppTextStyles.bodyMedium.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -136,7 +128,7 @@ class _LoginViewState extends State<LoginView> {
                   CustomTextField(
                     controller: _emailController,
                     label: 'Email Address',
-                    hint: 'name@example.com',
+                    hint: 'patient@example.com',
                     prefixIcon: Icons.email_outlined,
                     keyboardType: TextInputType.emailAddress,
                     validator: ValidationHelper.validateEmail,
@@ -144,7 +136,7 @@ class _LoginViewState extends State<LoginView> {
                   CustomTextField(
                     controller: _passwordController,
                     label: 'Password',
-                    hint: 'Enter password',
+                    hint: 'Enter your password',
                     prefixIcon: Icons.lock_outline_rounded,
                     isPassword: true,
                     validator: ValidationHelper.validatePassword,

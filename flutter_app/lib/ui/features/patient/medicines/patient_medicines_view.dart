@@ -245,6 +245,26 @@ class PatientMedicinesView extends StatelessWidget {
                 value: med.instructions,
               ),
               const SizedBox(height: 24),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.statusMissed,
+                  side: const BorderSide(color: AppColors.statusMissed, width: 1.5),
+                  minimumSize: const Size(double.infinity, 44),
+                ),
+                icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                label: const Text('Delete Medicine'),
+                onPressed: () {
+                  context.read<MedicineRepository>().deleteMedicine(med.medicineId);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${med.name} removed from your prescriptions.'),
+                      backgroundColor: AppColors.statusMissed,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
             ],
           ),
         );
