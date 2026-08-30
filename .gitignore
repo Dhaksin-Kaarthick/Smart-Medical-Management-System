@@ -1,0 +1,50 @@
+# Flutter & Dart
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.pub-cache/
+**/.pub/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+
+# Android
+**/.gradle/
+**/local.properties
+**/.cxx/
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/*.keystore
+**/*.jks
+
+# Python
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+.pytest_cache/
+
+# IDE & Editors
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Secrets & Environment Variables
+.env
+.env.*
+!.env.example
