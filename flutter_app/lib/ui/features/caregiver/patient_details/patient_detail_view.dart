@@ -13,6 +13,7 @@ import '../../../common/risk_card.dart';
 import '../../../common/medicine_card.dart';
 import '../../../common/adherence_card.dart';
 import '../../../common/section_header.dart';
+import '../../../common/empty_state.dart';
 import '../../../common/custom_button.dart';
 import '../../../common/custom_text_field.dart';
 
@@ -310,12 +311,19 @@ class _PatientDetailViewState extends State<PatientDetailView> {
             onAction: () => _showAddMedicineDialog(context),
           ),
           const SizedBox(height: 8),
-          ...todayLogs.map(
-            (log) => MedicineCard(
-              log: log,
-              showAction: false,
+          if (todayLogs.isEmpty)
+            const EmptyState(
+              icon: Icons.event_available_outlined,
+              title: 'No doses scheduled for today',
+              subtitle: 'Tap "+ Add Medicine" to prescribe a new medicine schedule.',
+            )
+          else
+            ...todayLogs.map(
+              (log) => MedicineCard(
+                log: log,
+                showAction: false,
+              ),
             ),
-          ),
           const SizedBox(height: 20),
 
           // PRESCRIBED MEDICINE REPOSITORY
@@ -323,44 +331,51 @@ class _PatientDetailViewState extends State<PatientDetailView> {
             title: 'Prescribed Medicines (${medicines.length})',
           ),
           const SizedBox(height: 8),
-          ...medicines.map(
-            (med) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.cardBorder),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.medication_outlined, color: AppColors.primary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          med.name,
-                          style: AppTextStyles.titleMedium.copyWith(fontSize: 15, fontWeight: FontWeight.w700),
-                        ),
-                        Text(
-                          '${med.dosage} • ${med.frequency} (${med.scheduledTimes.join(", ")})',
-                          style: AppTextStyles.bodySmall,
-                        ),
-                      ],
+          if (medicines.isEmpty)
+            const EmptyState(
+              icon: Icons.medication_outlined,
+              title: 'No medicines added yet',
+              subtitle: 'Prescribe medicines to start tracking adherence.',
+            )
+          else
+            ...medicines.map(
+              (med) => Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.cardBorder),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.medication_outlined, color: AppColors.primary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            med.name,
+                            style: AppTextStyles.titleMedium.copyWith(fontSize: 15, fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            '${med.dosage} • ${med.frequency} (${med.scheduledTimes.join(", ")})',
+                            style: AppTextStyles.bodySmall,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, color: AppColors.statusMissed, size: 20),
-                    onPressed: () {
-                      medRepo.deleteMedicine(med.medicineId);
-                    },
-                  ),
-                ],
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, color: AppColors.statusMissed, size: 20),
+                      onPressed: () {
+                        medRepo.deleteMedicine(med.medicineId);
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
