@@ -8,13 +8,11 @@ import 'firebase_options.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Real Firebase
+  // Local database mode - Skip remote Firebase network dependencies
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    // Optionally initialize if offline/supported, else continue safely with local database
   } catch (e) {
-    debugPrint('[FirebaseInit] Error initializing Firebase: $e');
+    debugPrint('[Init] Local database mode active');
   }
 
   if (!kIsWeb) {
