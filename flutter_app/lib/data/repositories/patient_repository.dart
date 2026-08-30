@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../models/patient_model.dart';
 import '../services/demo_data_service.dart';
 
-/// Repository managing patient list, patient details, and caregiver assignments.
+/// Repository managing patient profile data and active patient record.
 class PatientRepository extends ChangeNotifier {
   List<PatientModel> _patients = [];
   PatientModel? _selectedPatient;
@@ -13,8 +13,8 @@ class PatientRepository extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   PatientRepository() {
-    _patients = List.from(DemoDataService.demoCaregiverPatients);
-    _selectedPatient = _patients.isNotEmpty ? _patients.first : null;
+    _patients = [DemoDataService.demoPatient];
+    _selectedPatient = _patients.first;
   }
 
   void selectPatient(String patientId) {
@@ -30,7 +30,7 @@ class PatientRepository extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     _patients.add(newPatient);
     _isLoading = false;
     notifyListeners();
